@@ -1,115 +1,115 @@
-# Ali — Tool dành cho mấy web cấm copy, khó lưu PDF
+# Ali — Web to PDF for sites that don't want to be saved
 
-Nói thẳng: tool này sinh ra để trị mấy trang kiểu cấm chuột phải, chặn copy, chặn in, cuộn tới đâu mới load tới đó, ảnh lazy-load, nội dung ảo virtualized, feed kiểu Facebook cuộn mãi không hết, web 3D lồng iframe/canvas các kiểu.
+Straight up: I built this for annoying sites. Right-click disabled, copy blocked, print blocked, images only load when you scroll, virtualized lists, endless Facebook-style feeds, 3D pages full of iframes and canvas.
 
-Web ngoan hiền Ctrl+P phát ăn ngay thì bạn không cần tool này. Còn gặp web khó nhằn, quét mãi không đủ chữ, lưu PDF ra toàn trang trắng, ảnh mất sạch — thì mới tới lượt Ali.
+If Ctrl+P works fine on your site, you don't need this. If you keep getting blank PDFs, missing images, half-loaded text — that's where Ali comes in.
 
-Nguyên tắc của mình:
+How it works:
 
-- Chạy ngay trong tab Chrome bạn đã đăng nhập. Không xin tài khoản, không gửi bài đi đâu, không AI vẽ lại nội dung.
-- Chữ DOM giữ nguyên dạng chữ, copy / tìm kiếm được. Cái gì vốn đã là ảnh thì vẫn là ảnh, mình không OCR hộ.
-- Ảnh nhúng thẳng vào HTML offline rồi mới in A4. In bằng hộp thoại chuẩn của Chrome, bật Background graphics lên là xong.
-- Lỗi chỗ nào ghi rõ chỗ đó trong `.report.json`, thiếu ảnh thì đánh dấu ô trống chứ không ỉm đi.
+- Runs right in the Chrome tab where you're already logged in. No passwords in code, nothing uploaded anywhere, no AI rewriting stuff.
+- DOM text stays as text, so you can search and copy it. Text baked into images stays as images, I don't OCR for you.
+- Images get packed into an offline HTML file, then you print that to A4 with Chrome's normal print dialog. Turn on Background graphics and you're good.
+- If something fails, it says so in `.report.json`. Missing images show up as placeholders, I don't silently hide them.
 
-Hợp nhất với bài học kiểu Edubit: 1 cột câu hỏi dài, có ảnh, có đáp án. Còn feed Facebook, web 3D bay nhảy thì quét cho vui thôi, đừng mong 1 phát ăn cả cái newsfeed.
+Best fit is lesson-style pages (like Edubit): one long column of questions, images, answers. Facebook feeds and fancy 3D sites? You can try, but don't expect to grab a whole newsfeed in one shot.
 
-Thấy chưa hợp web của bạn? Tải code về tự chế đi. Code để hết trong `src/` với `extension/`, không khóa gì cả.
+Doesn't fit your site? Fork it. Everything's in `src/` and `extension/`, nothing locked.
 
-## Cài phát dùng luôn
+## Install and use
 
-Mình dùng bản extension là chính, file nằm sẵn ở `extension/`, hiện tại là `v2.4.0`.
+I only use the extension build day to day. It's already in `extension/`, currently `v2.4.0`.
 
-1. Chrome gõ `chrome://extensions`
-2. Bật **Developer mode**
-3. **Load unpacked** → trỏ vào thư mục `extension` trong code tải từ GitHub (chỗ có `manifest.json`)
-4. Ghim **Ali · Web to PDF** ra ngoài cho dễ bấm
+1. Open Chrome, go to `chrome://extensions`
+2. Turn on **Developer mode**
+3. **Load unpacked** -> pick the `extension` folder from this repo (the one with `manifest.json`)
+4. Pin **Ali · Web to PDF** so you can click it
 
-Không cần `npm install` để xài extension. Nhớ đừng xóa cái thư mục đó đi, Chrome nó đọc trực tiếp đấy. Sửa code xong thì vào `chrome://extensions` bấm reload, F5 lại trang học là có bản mới.
+No `npm install` needed for the extension. Don't delete or move that folder after, Chrome reads straight from it. After you edit code, hit reload in `chrome://extensions` and F5 the lesson page.
 
-## Dùng như nào?
+## Daily flow
 
-1. Đăng nhập web như bình thường, mở bài cần lấy.
-2. Bấm icon Ali → **Kéo chọn vùng**, khoanh đúng cột nội dung. Khung cam là cái sẽ quét, bao gồm cả phần chưa cuộn tới, không phải chỉ chỗ bạn đang nhìn.
-3. Bấm **Dùng vùng này**. Web nào bấm số mới hiện từng câu thì chuyển sang chế độ từng câu, khoanh luôn cả thanh số.
-4. Bấm **Quét bài này**, ngồi yên đừng đổi tab để nó tự cuộn + chờ ảnh load.
-5. Bấm **Tạo bản in / Lưu PDF** → tab bản in hiện ra → **In / Lưu PDF** → chọn **Save as PDF**, A4, tick **Background graphics** → Save.
+1. Log in normally, open the lesson you want.
+2. Click the Ali icon -> **Drag select**, draw around the content column. The orange box is what gets scanned, including the part below the screen, not just what you see.
+3. Hit **Use this area**. If the site shows one question at a time when you click numbers, switch to per-question mode and select the number bar too.
+4. Hit **Scan this lesson**, stay on that tab and let it auto-scroll and wait for images.
+5. Hit **Make print version / Save PDF** -> in the preview tab hit **Print / Save PDF** -> **Save as PDF**, A4, check **Background graphics** -> Save.
 
-Quét nhiều bài thì vào tab **Nhiều bài**, ném list URL vào (mỗi dòng 1 link). Điều kiện duy nhất: mấy bài đó phải cùng layout với bài mẫu bạn đã chọn vùng. Khác layout là toang, khỏi thắc mắc.
+For multiple lessons, go to the **Batch** tab and paste URLs, one per line. Only rule: they have to share the same layout as the sample you selected. Different layout, different result. That's on you.
 
-File đã quét nằm ở mục **Đã lưu**, lưu trong máy bạn thôi. Quan trọng thì tải PDF/HTML ra ngoài cất, xóa extension là mất sạch ráng chịu.
+Saved files live under **Saved**, stored locally in the extension. Important stuff? Download the PDF/HTML out. Uninstall the extension or wipe Chrome data and it's gone.
 
-## Mấy ca khoai và cách xử
+## Headaches and fixes
 
-**1. Web cấm copy, disable chuột phải?**
-Kệ nó. Mình đọc thẳng DOM chứ không thèm bấm copy, nên mấy cái script chặn copy vô tác dụng.
+**1. Site blocks copy / disables right-click?**
+Don't care. I read the DOM directly, copy-block scripts do nothing.
 
-**2. Ảnh thấy trên web mà mất trong bản lưu?**
-Ca này kinh điển. 99% do ảnh nằm domain khác (CDN, `*.fbcdn.net`...) nên Chrome không cho sờ vào.
+**2. Images show on the site but vanish in the save?**
+Classic one. 99% of the time the images live on another domain (CDN, `*.fbcdn.net`...) and Chrome won't let me touch them.
 
-Xử lý:
+Fix in order:
 
-- Panel hỏi **Cho phép nguồn ảnh / font** thì Allow đi, đừng sợ, nó chỉ xin đúng domain có ảnh bài học. Xong quét lại.
-- Lười quét lại thì giữ nguyên tab gốc, mở bản xem trước bấm **In từ trang gốc để lấy ảnh**. Cách này in ké phiên đăng nhập nên mấy ảnh khó cũng lòi ra.
-- Bản cũ đã thành ô trống rồi thì quét lại từ đầu cho nhanh, đừng cố cứu.
+- When the panel asks to **Allow image / font sources**, allow exactly the domains it lists. Then rescan.
+- Too lazy to rescan? Keep the original lesson tab open, open the preview and hit **Print from original page to get images**. That prints through your logged-in session so stubborn images usually show up.
+- Old file already full of empty boxes? Just rescan from scratch, faster than trying to rescue it.
 
-Từ v2.4.0 nếu tải byte thất bại thì tool tự thử moi ảnh đã hiện trên trang ở size gốc lưu PNG. Lấy kiểu gì thì mở `.report.json` ra mà xem.
+Since v2.4.0 if byte download fails it tries to grab the already-rendered image at natural size and saves PNG. Check `.report.json` to see how each image was grabbed.
 
-**3. Web load dần, cuộn mới hiện, Facebook-like?**
-Tool có tự cuộn + chờ ảnh, nhưng feed vô hạn thì không ai hứa quét hết được. Bấm **Dừng** thì nó giữ phần đã quét được và ghi rõ là bản dở. Đừng cầm bản dở đi bảo tool lỗi.
+**3. Lazy-load, scroll-to-load, Facebook-like feeds?**
+It auto-scrolls and waits, but nobody can promise a full infinite feed. Hit **Stop** and it keeps what it got so far and marks it as partial. Don't bring me a partial file and call it a bug.
 
-**4. Iframe / canvas / chữ trong ảnh?**
-- Chữ trong ảnh vẫn là ảnh. Không OCR.
-- Canvas giữ được thì giữ dạng ảnh.
-- Iframe thì tự mở frame đó thành tab riêng mà quét. Tool không tự chui vào iframe hộ bạn.
+**4. Iframe / canvas / text inside images?**
+- Text in images stays images. No OCR.
+- Canvas kept as image if readable.
+- Iframes: open the frame URL in its own tab and scan that. I don't crawl into iframes for you.
 
-**5. Cài Ruler hay thước đo gì đó?**
-Tắt đi trước khi kéo vùng. Nó bắt chuột là khỏi kéo.
+**5. Got Ruler or some measuring extension?**
+Turn off its Ruler mode before dragging. It eats your mouse events and the drag won't work.
 
-Chi tiết mình vứt hết trong `extension/help.html` rồi, mở bằng Chrome mà đọc.
+More detail is in `extension/help.html`, just open it in Chrome.
 
-## Bản dòng lệnh — cho ai thích gõ
+## CLI build — if you like terminals
 
-Ít dùng, nhưng vẫn chạy được. Cần Node.js + Chrome.
+Rarely used, but still works. Needs Node.js + Chrome.
 
 ```powershell
 .\Cai-dat.cmd
 .\Chay-cong-cu.cmd
 ```
 
-Chạy list URL:
+Run a URL list:
 
 ```powershell
 node src/cli.mjs --urls lesson-urls.txt
 ```
 
-Copy `lesson-urls.example.txt` thành `lesson-urls.txt`, mỗi dòng 1 link. Chạy auto thì thêm `--selector "CSS_CUA_COT_NOI_DUNG"`.
+Copy `lesson-urls.example.txt` to `lesson-urls.txt`, one URL per line. For auto runs add `--selector "YOUR_CONTENT_CSS"`.
 
-Mỗi lần chạy đẻ ra thư mục `output/pdf/run-...`, mỗi bài có `.pdf`, `.html`, `.report.json`. Thiếu câu / thiếu ảnh mà không thêm `--allow-incomplete` thì nó dừng, khỏi xin bản nháp.
+Each run makes its own `output/pdf/run-...` folder, each lesson gets `.pdf`, `.html`, `.report.json`. Missing questions / broken images stop the run unless you pass `--allow-incomplete`.
 
-## Thích thì vọc code
+## Hack it
 
-Code dùng chung ở `src/dom.mjs`. Muốn chế cho web riêng của bạn thì cứ fork mà sửa selector, cách cuộn, cách chờ ảnh.
+Shared logic lives in `src/dom.mjs`. Want it tuned for your own site? Fork and mess with selectors, scrolling, image waiting.
 
-Sửa xong chạy:
+After editing:
 
 ```powershell
 npm run build:extension
 ```
 
-rồi reload extension.
+then reload the extension.
 
-Test thì toàn chạy localhost, không cần acc thật:
+Tests all run on localhost, no real account needed:
 
 ```powershell
 npm test
 npm run test:all
 ```
 
-Có test riêng cho kéo vùng (`test:selection`), dừng giữa chừng (`test:regression`), xin quyền ảnh (`test:resources`). Đọc tên là biết.
+Separate ones for area select (`test:selection`), mid-run stop (`test:regression`), image permissions (`test:resources`). Names say it all.
 
-## Nói trước kẻo lại hỏi
+## Up front so you don't ask later
 
-- Lúc quét cần mạng để tải bài / ảnh / font. Lưu xong rồi thì offline đọc thoải mái.
-- Chỉ lấy được cái bạn đã có quyền xem sau khi đăng nhập. Web chặn bot gắt quá thì chịu, mình không bypass hộ.
-- In qua Chrome nên ảnh có thể bị nén lại. Muốn giữ byte gốc thì mở file HTML offline mà soi.
-- Không tự làm bài hộ, không nộp bài hộ, không mở khóa hộ. Tool lưu tài liệu thôi, không phải tool hack điểm.
+- You need internet while scanning to load lessons / images / fonts. After saving, PDF / offline HTML read fine without it.
+- It only grabs what you can already see logged in. If a site has hardcore bot protection, it can still fail. I don't bypass that for you.
+- Printing goes through Chrome so images may get recompressed. Want original bytes? Open the offline HTML.
+- It doesn't do your homework, submit answers, or unlock lessons. It just saves docs.
