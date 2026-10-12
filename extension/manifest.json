@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Ali · Web to PDF",
+  "description": "Quét bài học ngay trong tab đã đăng nhập, kiểm tra ảnh và tạo bản in PDF có chữ tìm kiếm được.",
+  "version": "2.4.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "sidePanel", "storage"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Ali · Quét trang thành PDF", "default_icon": { "16":"icons/16.png", "32":"icons/32.png", "128":"icons/128.png" } },
+  "icons": { "16":"icons/16.png", "32":"icons/32.png", "128":"icons/128.png" },
+  "side_panel": { "default_path": "panel.html" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; frame-src 'self' about:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;" }
+}

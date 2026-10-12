@@ -1,0 +1,8 @@
+{
+  "name": "edubit-pdf-exporter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/cli.mjs", "build:extension":"node scripts/build-extension.mjs", "test": "node --test test/export.test.mjs", "test:extension":"node --test test/extension.test.mjs", "test:source":"node --test test/source.test.mjs", "test:selection":"node --test test/selection.test.mjs", "test:regression":"node --test test/regression.test.mjs", "test:resources":"node --test test/resources.test.mjs", "test:all":"node --test --test-concurrency=1 test/*.test.mjs" },
+  "dependencies": { "playwright": "^1.56.0" }
+}

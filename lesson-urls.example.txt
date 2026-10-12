@@ -1,0 +1,2 @@
+# Mỗi dòng một URL bài học. Sao chép liên kết các bài từ mục lục khóa học.
+https://maihienvstep.edubit.vn/video/40129?lesson-id=EXAMPLE
