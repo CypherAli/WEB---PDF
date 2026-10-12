@@ -9,9 +9,9 @@ if exist "%ALI_CHROME%" (
   start "" "%~dp0extension\help.html"
 )
 echo.
-echo Thu muc can chon khi bam Load unpacked trong Chrome:
+echo Select this folder when you click Load unpacked in Chrome:
 echo %~dp0extension
 echo.
-echo Mo chrome://extensions, bat Developer mode, chon Load unpacked.
-echo Sau khi cai: ghim Ali Web to PDF trong menu manh ghep Chrome.
+echo Open chrome://extensions, enable Developer mode, click Load unpacked.
+echo After install: pin Ali Web to PDF from the Chrome puzzle menu.
 pause

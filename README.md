@@ -15,7 +15,7 @@ Best fit is lesson-style pages (like Edubit): one long column of questions, imag
 
 Doesn't fit your site? Fork it. Everything's in `src/` and `extension/`, nothing locked.
 
-## Install and use
+## Installation
 
 I only use the extension build day to day. It's already in `extension/`, currently `v2.4.0`.
 
@@ -26,7 +26,9 @@ I only use the extension build day to day. It's already in `extension/`, current
 
 No `npm install` needed for the extension. Don't delete or move that folder after, Chrome reads straight from it. After you edit code, hit reload in `chrome://extensions` and F5 the lesson page.
 
-## Daily flow
+You can also double-click `Install-Chrome-Extension.cmd` on Windows, it opens the help page and `chrome://extensions` for you.
+
+## Usage
 
 1. Log in normally, open the lesson you want.
 2. Click the Ali icon -> **Drag select**, draw around the content column. The orange box is what gets scanned, including the part below the screen, not just what you see.
@@ -38,7 +40,7 @@ For multiple lessons, go to the **Batch** tab and paste URLs, one per line. Only
 
 Saved files live under **Saved**, stored locally in the extension. Important stuff? Download the PDF/HTML out. Uninstall the extension or wipe Chrome data and it's gone.
 
-## Headaches and fixes
+## Troubleshooting
 
 **1. Site blocks copy / disables right-click?**
 Don't care. I read the DOM directly, copy-block scripts do nothing.
@@ -67,13 +69,13 @@ Turn off its Ruler mode before dragging. It eats your mouse events and the drag 
 
 More detail is in `extension/help.html`, just open it in Chrome.
 
-## CLI build — if you like terminals
+## Command Line Interface
 
 Rarely used, but still works. Needs Node.js + Chrome.
 
 ```powershell
-.\Cai-dat.cmd
-.\Chay-cong-cu.cmd
+.\Install.cmd
+.\Run.cmd
 ```
 
 Run a URL list:
@@ -86,9 +88,9 @@ Copy `lesson-urls.example.txt` to `lesson-urls.txt`, one URL per line. For auto 
 
 Each run makes its own `output/pdf/run-...` folder, each lesson gets `.pdf`, `.html`, `.report.json`. Missing questions / broken images stop the run unless you pass `--allow-incomplete`.
 
-## Hack it
+## Customization
 
-Shared logic lives in `src/dom.mjs`. Want it tuned for your own site? Fork and mess with selectors, scrolling, image waiting.
+Shared logic lives in `src/dom.mjs`. Want it tuned for your own site? Fork and adjust selectors, scrolling, and image waiting to match that site.
 
 After editing:
 
@@ -97,6 +99,8 @@ npm run build:extension
 ```
 
 then reload the extension.
+
+## Testing
 
 Tests all run on localhost, no real account needed:
 
@@ -107,7 +111,7 @@ npm run test:all
 
 Separate ones for area select (`test:selection`), mid-run stop (`test:regression`), image permissions (`test:resources`). Names say it all.
 
-## Up front so you don't ask later
+## Limitations
 
 - You need internet while scanning to load lessons / images / fonts. After saving, PDF / offline HTML read fine without it.
 - It only grabs what you can already see logged in. If a site has hardcore bot protection, it can still fail. I don't bypass that for you.
