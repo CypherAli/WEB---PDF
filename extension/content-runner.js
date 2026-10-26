@@ -1,5 +1,30 @@
 // Bundled inside one isolated-world closure with the shared DOM functions.
 const state = { status:'idle',progress:'Chưa quét',content:null,sidebar:null,contentPath:null,sidebarPath:null,result:null,error:null,cancel:false,selectionRevision:0 };
+function currentSelection() {
+  if(state.selectionMode!=='exact')return {...selectionSummary(state.content),inputMode:'full'};
+  const meta=state.exactMeta;
+  if(!meta || meta.viewport.width!==innerWidth || meta.viewport.height!==innerHeight || meta.scrollPositions.some(({el,top,left})=>!el.isConnected || el.scrollTop!==top || el.scrollLeft!==left))throw new Error('Trang đã cuộn hoặc đổi kích thước sau khi kéo. Chọn lại khung để chụp đúng vị trí.');
+  return {rect:{...meta.drawnRect},viewport:{...meta.viewport},images:0,loadedImages:0,questions:0,navigationBlocks:0,inputMode:'exact'};
+}
+async function captureReference(selector) {
+  if(!state.referenceEnabled || selector!==state.content || state.cancel)return;
+  const root=document.querySelector(selector);
+  if(!root)return;
+  const visible=visibleBounds(root);if(!visible.width || !visible.height)return;
+  const key=JSON.stringify([(window.__aliScroll || []).map(el=>[el.scrollTop,el.scrollLeft,el.scrollHeight]),root?.textContent.slice(0,300),[...root.querySelectorAll('img')].map(el=>[el.currentSrc,el.naturalWidth])]);
+  if(state.referenceKeys.has(key))return;
+  state.referenceKeys.add(key);
+  if(state.referenceImages.length>=60 || state.referenceBytes>20*1024*1024) {
+    state.referenceEnabled=false;state.referenceWarnings.push('Ảnh gốc đạt giới hạn lưu (60 khung hoặc 20 MB); phần sau chưa có ảnh đối chiếu.');return;
+  }
+  try {
+    const capture=await chrome.runtime.sendMessage({app:'ali-source',type:'CAPTURE_REFERENCE',captureId:state.captureId});
+    if(capture.error)throw new Error(capture.error);
+    state.referenceBytes+=capture.image.length;
+    const atBottom=(window.__aliScroll || []).every(el=>el.scrollTop+el.clientHeight>=el.scrollHeight-3);
+    state.referenceImages.push({image:capture.image,width:capture.width,height:capture.height,cssWidth:capture.selection.rect.width,atBottom,label:`Khung gốc ${state.referenceImages.length+1}${atBottom?' · cuối vùng':''}`,createdAt:new Date().toISOString()});
+  } catch(error) {state.referenceEnabled=false;state.referenceWarnings.push('Chưa chụp đủ bản gốc để so sánh: '+error.message);}
+}
 const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
 let imageElements=new Map();
 function rememberImages(root) {
@@ -91,7 +116,11 @@ async function scrollContent(selector,excludeNavigation=true,onCheckpoint=()=>{}
   for(const el of root.querySelectorAll('*')) if(el.scrollHeight>el.clientHeight+4) saved.push([el,el.scrollTop,el.scrollLeft]);
   try {
     await prepareRoot({selector,excludeNavigation});
+    // Bring the column into view before scrolling its inner list. Otherwise a
+    // below-fold list can pass its first items before any reference is visible.
+    if(state.referenceEnabled && selector===state.content)root.scrollIntoView({block:'start',inline:'nearest',behavior:'instant'});
     onCheckpoint();
+    await captureReference(selector);
     let stable=0,last='',lastNumbers=[],virtual=false,finished=false,steps=0;
     for(;steps<600;steps++) {
       assertActive();
@@ -108,11 +137,13 @@ async function scrollContent(selector,excludeNavigation=true,onCheckpoint=()=>{}
       state.progress=`Đang cuộn · lượt ${steps+1} · ${numbers.length} câu trong vùng`;
       await pause(180);
       onCheckpoint();
+      await captureReference(selector);
       if(stable>=4) {finished=true;break;}
     }
     state.progress='Đang chờ ảnh và phông chữ...';
     const resources=await inspectResources({selector,timeoutMs:15000,excludeNavigation,checkCancel:true});
     onCheckpoint();
+    await captureReference(selector);
     assertActive();
     return {...resources,finished,virtual,steps:steps+1};
   } finally { for(const [el,top,left] of saved) {el.scrollTop=top;el.scrollLeft=left;} }
@@ -125,6 +156,7 @@ async function collect(options) {
   imageElements=new Map();state.captureId=crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
   window.__aliImageRegistry=new Map();window.__aliImageIds=new WeakMap();
   state.status='scanning';state.cancel=false;window.__aliScanStopRequested=false;state.error=null;state.result=null;
+  state.referenceEnabled=options.compare===true;state.referenceImages=[];state.referenceWarnings=[];state.referenceKeys=new Set();state.referenceBytes=0;
   const report={source:redactSource(location.href),title:document.title,mode:options.mode,createdAt:new Date().toISOString(),warnings:[],questions:[],checks:[],expectedCount:null,status:'scanning'};
   const chunks=[],checkpoints=new Map(),checkpointSignatures=new Map();
   const readable=chunk=>!!(chunk.text.trim() || /<(?:img|svg|canvas)\b/i.test(chunk.html));
@@ -151,6 +183,7 @@ async function collect(options) {
   state.checkpointQuestions=[];
   try {
     if(!state.content) throw new Error('Chọn vùng nội dung trước khi quét.');
+    if(state.selectionMode==='exact')throw new Error('Khung chính xác cần dùng nút Chụp vùng đã kéo trong bảng Ali.');
     const detected=document.body.innerText.match(/Danh sách câu hỏi[\s\S]{0,200}?Tất cả\s*:?\s*(\d+)/i);
     const expected=options.expected || (detected ? Number(detected[1]):null);
     report.expectedCount=expected;
@@ -203,7 +236,7 @@ async function collect(options) {
     report.status=report.complete?'captured':'partial-error';
     if(!report.complete) {report.partialReason='errors';report.error=report.warnings.join(' ');report.warnings.push('BẢN QUÉT CHƯA HOÀN TẤT: có lỗi, vẫn giữ nội dung đọc được để lưu PDF.');}
     report.warnings=[...new Set(report.warnings)];
-    state.result={chunks,report};state.status=report.complete?'ready':'partial';state.progress=`Đã giữ ${report.questions.length} câu${report.complete?'':' · có lỗi tải tài nguyên'} · sẵn sàng tạo bản in`;
+    state.result={chunks,report,referenceImages:state.referenceImages};state.status=report.complete?'ready':'partial';state.progress=`Đã giữ ${report.questions.length} câu${report.complete?'':' · có lỗi tải tài nguyên'} · sẵn sàng tạo bản in`;
   } catch(error) {
     // Prefer a finished document snapshot when count/iframe validation failed.
     // Otherwise retain checkpoints, including earlier virtualized questions.
@@ -212,12 +245,12 @@ async function collect(options) {
     if(retained.length) {
       report.questions=[...new Set(retained.flatMap(c=>c.numbers))].sort((a,b)=>a-b);
       report.warnings=[...new Set([...report.warnings,...retained.flatMap(c=>c.warnings),error.message,state.cancel?'BẢN QUÉT CHƯA HOÀN TẤT: đã dừng theo yêu cầu, chỉ giữ nội dung đã đi qua.':'BẢN QUÉT CHƯA HOÀN TẤT: có lỗi, vẫn giữ nội dung đọc được để lưu PDF.'])];
-      state.result={chunks:retained,report};state.status='partial';state.error=null;
+      state.result={chunks:retained,report,referenceImages:state.referenceImages};state.status='partial';state.error=null;
       state.progress=`${state.cancel?'Đã dừng':'Có lỗi'} · giữ ${report.questions.length}${report.expectedCount?`/${report.expectedCount}`:''} câu · đang chuẩn bị bản PDF dở`;
     } else {
       state.result={chunks:[],report};state.status=report.status;state.error=error.message;state.progress=error.message;
     }
-  }
+  } finally {report.referenceRequested=options.compare===true;report.referenceFrames=state.referenceImages.length;report.referenceWarnings=[...state.referenceWarnings];}
 }
 async function fetchResource(url) {
   if(!/^(https?:|blob:|data:)/.test(url)) throw new Error('Không hỗ trợ loại URL này.');
@@ -231,32 +264,39 @@ async function fetchResource(url) {
 }
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(sender.id!==chrome.runtime.id || message.app!=='ali-pdf') return;
-  if(message.type==='STATE') {respond({pageUrl:location.href,captureId:state.captureId,status:state.status,progress:state.progress,content:state.content,sidebar:state.sidebar,contentPath:state.contentPath,sidebarPath:state.sidebarPath,error:state.error,selectionRevision:state.selectionRevision,checkpointQuestions:state.checkpointQuestions || []});return;}
+  if(message.type==='STATE') {respond({pageUrl:location.href,captureId:state.captureId,status:state.status,progress:state.progress,content:state.content,sidebar:state.sidebar,contentPath:state.contentPath,sidebarPath:state.sidebarPath,error:state.error,selectionMode:state.selectionMode || 'full',selectionRevision:state.selectionRevision,checkpointQuestions:state.checkpointQuestions || []});return;}
   if(message.type==='SELECTION') {
     if(!state.content || state.status==='picking') {respond({error:'Chọn và xác nhận vùng nội dung trước.'});return;}
-    try {respond({...selectionSummary(state.content),revision:state.selectionRevision,inputMode:window.__aliPickedMeta?.mode || 'element'});}catch(error){respond({error:error.message});}
+    try {respond({...currentSelection(),revision:state.selectionRevision});}catch(error){respond({error:error.message});}
     return;
   }
   if(message.type==='PREVIEW_BEGIN') {
-    if(!state.content || ['scanning','picking'].includes(state.status)) {respond({error:'Chọn xong vùng và giữ trang mở trước khi cập nhật ảnh.'});return;}
+    if(!state.content || state.status==='picking' || (state.status==='scanning' && (!message.duringScan || message.captureId!==state.captureId))) {respond({error:'Chọn xong vùng và giữ trang mở trước khi cập nhật ảnh.'});return;}
+    if(message.revision!==state.selectionRevision) {respond({error:'Vùng chọn đã thay đổi. Hãy chụp lại.'});return;}
     restorePreview();
     const root=document.querySelector(state.content);
     if(!root) {respond({error:'Vùng đã chọn không còn tồn tại.'});return;}
-    const hidden=[...navigationRoots(document.body)].filter(el=>el!==root && !el.contains(root));
+    const rootRect=visibleBounds(root);
+    const floating=[...document.body.querySelectorAll('*')].filter(el=>{
+      if(el===root || root.contains(el) || el.contains(root) || el.closest('[data-ali-ui]'))return false;
+      if(!['fixed','sticky'].includes(getComputedStyle(el).position))return false;
+      const r=visibleBounds(el);return r.width>0 && r.height>0 && r.left<rootRect.left+rootRect.width && r.left+r.width>rootRect.left && r.top<rootRect.top+rootRect.height && r.top+r.height>rootRect.top;
+    });
+    const hidden=state.selectionMode==='exact'?[]:[...new Set([...navigationRoots(document.body),...floating])].filter(el=>el!==root && !el.contains(root));
     const saved=hidden.map(el=>({el,value:el.style.getPropertyValue('visibility'),priority:el.style.getPropertyPriority('visibility')}));
     for(const {el} of saved)el.style.setProperty('visibility','hidden','important');
     previewRestore=()=>{for(const {el,value,priority} of saved){if(value)el.style.setProperty('visibility',value,priority);else el.style.removeProperty('visibility');}};
     previewToken=crypto.randomUUID();const token=previewToken;
     // Restore even if the worker closes/restarts or capture fails.
     previewTimer=setTimeout(()=>restorePreview(token),6000);
-    loadVisiblePreviewImages(root).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))).then(()=>respond({token,navigationHidden:hidden.length,selection:{...selectionSummary(state.content),revision:state.selectionRevision}})).catch(error=>{restorePreview(token);respond({error:error.message});});
+    (state.selectionMode==='exact'?Promise.resolve():loadVisiblePreviewImages(root)).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))).then(()=>respond({token,navigationHidden:hidden.length,selection:{...currentSelection(),revision:state.selectionRevision}})).catch(error=>{restorePreview(token);respond({error:error.message});});
     return true;
   }
   if(message.type==='PREVIEW_END') {restorePreview(message.token);respond({ok:true});return;}
   if(message.type==='RESULT') {respond(state.result);return;}
   if(message.type==='CONFIGURE') {
     if(state.status==='scanning') {respond({error:'Đang quét.'});return;}
-    if(message.contentPath && document.querySelector(message.contentPath)) {state.content=message.contentPath;state.contentPath=message.contentPath;state.selectionRevision++;}
+    if(message.contentPath && document.querySelector(message.contentPath)) {state.content=message.contentPath;state.contentPath=message.contentPath;state.selectionMode='full';state.exactMeta=null;state.selectionRevision++;}
     if(message.sidebarPath && document.querySelector(message.sidebarPath)) {state.sidebar=message.sidebarPath;state.sidebarPath=message.sidebarPath;}
     respond({ok:true,pageUrl:location.href,content:state.content,sidebar:state.sidebar});return;
   }
@@ -265,14 +305,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(state.status==='picking') {respond({error:'Hoàn tất hoặc hủy vùng đang chọn trên trang trước.'});return;}
     state.status='picking';state.result=null;state.progress='Chọn vùng trên trang rồi bấm “Dùng vùng này”.';
     const picker=message.method==='drag' ? installDragPicker:installPicker;
-    picker({message:message.kind==='sidebar'?'Chọn cả vùng chứa các nút số câu':'Chọn cả cột nội dung bài học',token:message.kind});
+    picker({message:message.kind==='sidebar'?'Chọn cả vùng chứa các nút số câu':message.exact?'Copy đúng khung kéo':'Chọn cả cột nội dung bài học',token:message.kind,exact:message.exact===true});
     const timer=setInterval(()=>{
       if(!window.__aliPicked) return;
       clearInterval(timer);
       if(window.__aliPicked!=='__cancelled__') {
         state[message.kind]=window.__aliPicked;
         state[`${message.kind}Path`]=selectorPath(document.querySelector(window.__aliPicked));
-        if(message.kind==='content')state.selectionRevision++;
+        if(message.kind==='content'){state.selectionMode=window.__aliPickedMeta?.mode==='exact'?'exact':'full';state.exactMeta=state.selectionMode==='exact'?window.__aliPickedMeta:null;state.selectionRevision++;}
       }
       state.status='idle';state.progress='Đã chọn vùng. Bấm Quét bài này.';
     },200);

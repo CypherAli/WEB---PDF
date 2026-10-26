@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ali · Web to PDF",
   "description": "Quét bài học ngay trong tab đã đăng nhập, kiểm tra ảnh và tạo bản in PDF có chữ tìm kiếm được.",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "sidePanel", "storage"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],

@@ -6,11 +6,12 @@ import {loadResource} from './resource-loader.js';
 const $=id=>document.getElementById(id),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let source=null,view='single',busy=false,cancel=false,jobTab=null,results=[],currentResult=null,pendingGrant=null;
 let previewKey=null,previewRunning=false,previewGeneration=0;
+let selectionMode='full';
 const status=(text,error=false)=>{$('status').textContent=text;$('status').classList.toggle('error',error);};
 const message=(tabId,type,params={})=>chrome.tabs.sendMessage(tabId,{app:'ali-pdf',type,...params});
 function lock(value) {
   busy=value;
-  for(const id of ['useTab','connectSource','dragContent','pickContent','pickSidebar','scan','mode','expected','getLinks','urls','prepare','refreshPreview']) $(id).disabled=value;
+  for(const id of ['useTab','connectSource','dragContent','exactContent','pickContent','pickSidebar','scan','mode','expected','getLinks','urls','prepare','refreshPreview','saveOriginal']) $(id).disabled=value;
   $('stop').hidden=!value;$('progress').hidden=!value;
   if(!value && source) void refreshSelection().catch(()=>{});
 }
@@ -35,22 +36,27 @@ async function setSource({preferAction=true}={}) {
   $('connectBox').hidden=true;
   await chrome.storage.local.set({lastSource:source});
   const template=(await chrome.storage.local.get('template')).template;
-  if(template?.origin===new URL(source.url).origin) await message(source.id,'CONFIGURE',template);
+  if(template?.origin===new URL(source.url).origin && !(await message(source.id,'STATE')).content) await message(source.id,'CONFIGURE',template);
   const current=await refreshSelection();
   status(current?.content?'Đã có vùng nội dung. Kiểm tra ảnh xem trước rồi quét.':'Đã chọn trang. Chọn vùng nội dung để bắt đầu.');
 }
 async function refreshSelection() {
   if(!source) return;
   const s=await message(source.id,'STATE');
-  if(s.contentPath) await chrome.storage.local.set({template:{origin:new URL(source.url).origin,contentPath:s.contentPath,sidebarPath:s.sidebarPath}});
+  selectionMode=s.selectionMode || 'full';
+  if(s.contentPath && selectionMode==='full') await chrome.storage.local.set({template:{origin:new URL(source.url).origin,contentPath:s.contentPath,sidebarPath:s.sidebarPath}});
   const template=view==='course' ? (await chrome.storage.local.get('template')).template:null;
   const saved=template?.origin===new URL(source.url).origin ? template:null;
   const content=!!(s.content || saved?.contentPath),sidebar=!!(s.sidebar || saved?.sidebarPath);
-  $('contentStatus').textContent=s.content ? '✓ Đã chọn vùng nội dung':saved?.contentPath ? '✓ Dùng vùng nội dung bài mẫu đã lưu':'Chưa chọn vùng nội dung';
+  $('contentStatus').textContent=s.content ? selectionMode==='exact'?'✓ Đã chọn khung chính xác · chữ dạng ảnh':'✓ Đã chọn vùng copy full':saved?.contentPath ? '✓ Dùng vùng nội dung bài mẫu đã lưu':'Chưa chọn vùng nội dung';
+  $('selectionHint').textContent=selectionMode==='exact'?'Chụp đúng khung đã kéo, không cuộn. Chữ trong khung lưu dạng ảnh. Giữ nguyên vị trí trang cho tới khi chụp.':'Copy full lấy chữ và ảnh gốc của cả khối, gồm phần bên dưới màn hình.';
+  $('lessonOptions').hidden=selectionMode==='exact';
+  $('originalOptions').hidden=selectionMode==='exact' || view==='course';
+  if(!busy)$('exactContent').disabled=view==='course';
   $('contentStatus').classList.toggle('ok',content);
   $('sidebarStatus').textContent=s.sidebar ? '✓ Đã chọn thanh số câu':saved?.sidebarPath ? '✓ Dùng thanh số bài mẫu đã lưu':'Chưa chọn thanh số';
   $('sidebarStatus').classList.toggle('ok',sidebar);
-  if(!busy) $('scan').disabled=!content || s.status==='picking' || ($('mode').value==='questions' && !sidebar);
+  if(!busy) {$('scan').disabled=!content || s.status==='picking' || (selectionMode==='exact'?view==='course':$('mode').value==='questions' && !sidebar);$('scan').textContent=view==='course'?'Quét danh sách bài':selectionMode==='exact'?'Chụp vùng đã kéo':'Quét bài này';}
   if(s.status==='picking') status(s.progress);
   if(s.status==='idle' && s.content && !busy && `${source.id}:${s.selectionRevision}`!==previewKey) status('Đã chọn vùng. Kiểm tra ảnh xem trước rồi bấm Quét bài này.');
   if(s.content && !busy && s.status!=='picking' && view!=='library' && `${source.id}:${s.selectionRevision}`!==previewKey) void updateSelectionPreview(s.selectionRevision);
@@ -73,7 +79,7 @@ async function updateSelectionPreview(revision) {
     if(generation!==previewGeneration || source?.id!==tabId || busy)return;
     $('selectionImage').src=cropped;$('selectionImage').hidden=false;
     const current=captured.selection;
-    $('selectionInfo').textContent=`${current.questions} câu · ${current.images} ảnh (${current.loadedImages} đã tải)${meta.navigationBlocks ? ` · sẽ loại ${meta.navigationBlocks} khối điều hướng` : ''}`;
+    $('selectionInfo').textContent=current.inputMode==='exact'?`Khung chính xác · ${Math.round(current.rect.width)} × ${Math.round(current.rect.height)} px`:`${current.questions} câu · ${current.images} ảnh (${current.loadedImages} đã tải)${meta.navigationBlocks ? ` · sẽ loại ${meta.navigationBlocks} khối điều hướng` : ''}`;
     $('selectionNotice').textContent=[captured.navigationHidden?'Ảnh xem trước đã bỏ thanh điều hướng/lớp đo vùng.':'',current.loadedImages<current.images?'Ảnh chưa hiện sẽ được tải khi quét.':''].filter(Boolean).join('\n');
   }catch(error){
     if(generation===previewGeneration && source?.id===tabId) {
@@ -93,9 +99,20 @@ async function requireSource() {
   return source;
 }
 function scanOptions() {
+  if(selectionMode==='exact') {if(view==='course')throw new Error('Chọn vùng copy full để quét nhiều bài.');return {mode:'region'};}
   const value=$('expected').value.trim();
   if(value && (!/^\d+$/.test(value) || Number(value)<1)) throw new Error('Số câu dự kiến phải là số nguyên dương.');
-  return {mode:$('mode').value,expected:value ? Number(value):null};
+  return {mode:$('mode').value,expected:value ? Number(value):null,compare:view!=='course' && $('saveOriginal').checked};
+}
+async function captureExact(tabId) {
+  const captured=await chrome.runtime.sendMessage({app:'ali-source',type:'CAPTURE_SELECTION',tabId});
+  if(captured.error)throw new Error(captured.error);
+  if(captured.selection.inputMode!=='exact')throw new Error('Khung đã đổi. Chọn lại vùng chính xác trước khi chụp.');
+  const image=await cropSelection(captured.image,captured.selection,{maxWidth:Infinity,maxHeight:Infinity});
+  const rect=captured.selection.rect,createdAt=new Date().toISOString();
+  return {chunks:[{html:`<img src="${image}" alt="Vùng chụp chính xác" style="display:block;width:${rect.width}px;max-width:100%;height:auto">`,text:'',numbers:[],resources:[],fontCss:'',warnings:[]}],
+    report:{source:redact(source.url),title:source.title,createdAt,mode:'region',contentFormat:'image',questions:[],checks:[],complete:true,domComplete:true,status:'captured',warnings:[],referenceRequested:true,referenceFrames:1,referenceWarnings:[]},
+    referenceImages:[{image,cssWidth:rect.width,label:'Khung gốc đã kéo',createdAt}]};
 }
 async function waitCapture(tabId) {
   for(;;) {
@@ -119,7 +136,7 @@ function showResult(result) {
   currentResult=result;
   $('resultBox').hidden=false;
   $('failureReport').hidden=!(result.report.complete===false && result.report.partialReason==='errors');
-  $('resultInfo').textContent=`${result.report.complete===false?'Bản quét dở · ':''}${result.report.questions.length}${result.report.complete===false && result.report.expectedCount?`/${result.report.expectedCount}`:''} câu nhận diện · ${result.chunks.reduce((n,c)=>n+c.resources.filter(u=>!u.startsWith('data:')).length,0)} tài nguyên cần đóng gói`;
+  $('resultInfo').textContent=result.report.mode==='region'?'Đã chụp đúng khung kéo · giữ nguyên hình thức · chữ dạng ảnh':`${result.report.complete===false?'Bản quét dở · ':''}${result.report.questions.length}${result.report.complete===false && result.report.expectedCount?`/${result.report.expectedCount}`:''} câu nhận diện · ${result.chunks.reduce((n,c)=>n+c.resources.filter(u=>!u.startsWith('data:')).length,0)} tài nguyên cần đóng gói`;
   const warnings=result.report.warnings;
   $('warnings').hidden=!warnings.length;$('warnings').textContent=warnings.join('\n');
 }
@@ -211,7 +228,7 @@ async function pack(result,tabId) {
   };
   const packedChunks=await Promise.all(result.chunks.map(async c=>({...c,html:await cleanPartial(embed(c.html)),fontCss:embed(c.fontCss).replace(/@font-face\s*\{[^}]*\}/g,rule=>partial && /url\(["']?https?:/i.test(rule)?'':rule),resources:[]})));
   if(recovered.some(r=>r.method==='loaded-image-png'))result.report.warnings.push('Một số ảnh lấy từ pixel đã tải ở độ phân giải gốc và lưu PNG; byte file nguồn không còn giữ nguyên.');
-  const packed={report:{...result.report,partialReason,recoveredResources:recovered,warnings:[...new Set(result.report.warnings)],complete:!partial,status:partial?partialReason==='stopped'?'stopped-partial':'partial-error':result.report.warnings.length?'ready-with-warnings':'verified-dom-and-resources',failedResources:errors},chunks:packedChunks};
+  const packed={report:{...result.report,partialReason,recoveredResources:recovered,warnings:[...new Set(result.report.warnings)],complete:!partial,status:partial?partialReason==='stopped'?'stopped-partial':'partial-error':result.report.warnings.length?'ready-with-warnings':'verified-dom-and-resources',failedResources:errors},chunks:packedChunks,referenceImages:result.referenceImages || []};
   if(partial && !packed.report.warnings.some(w=>w.includes('CHƯA HOÀN TẤT')))packed.report.warnings.push(partialReason==='stopped'?'BẢN QUÉT CHƯA HOÀN TẤT: đã dừng theo yêu cầu.':'BẢN QUÉT CHƯA HOÀN TẤT: có lỗi lưu tài nguyên; vẫn giữ nội dung đọc được.');
   // The panel's downloadable report must describe the packaged document too,
   // including errors discovered after a successful DOM scan.
@@ -226,7 +243,7 @@ async function storeLessons(lessons,title,notice='') {
   const partial=lessons.some(l=>l.report.complete===false) || !!notice;
   if(partial)title+=lessons.some(l=>l.report.partialReason==='errors')?' · bản quét có lỗi':' · bản quét dở';
   const id=crypto.randomUUID(),html=createHtml(lessons,{notice}),questionCount=lessons.reduce((n,l)=>n+l.report.questions.length,0);
-  const doc={id,title,createdAt:new Date().toISOString(),questionCount,html,reports:lessons.map(l=>l.report),nativeSource:lessons.length===1?lessons[0].nativeSource:null};
+  const doc={id,title,createdAt:new Date().toISOString(),questionCount,html,reports:lessons.map(l=>l.report),referenceImages:lessons.flatMap(l=>(l.referenceImages || []).map(image=>({...image,lessonTitle:l.report.title}))),nativeSource:lessons.length===1?lessons[0].nativeSource:null};
   await saveDocument(doc);return doc;
 }
 async function showPreview(doc) {
@@ -332,14 +349,15 @@ $('connectSource').onclick=guarded(async()=>{
   if(!allowed) throw new SourceError('Chưa được phép đọc website. Bạn có thể bấm lại biểu tượng Ali trên trang để dùng quyền tạm thời.','permission');
   await setSource({preferAction:false});
 });
-async function pickContent(method) {
+async function pickContent(method,exact=false) {
   const s=await requireSource();currentResult=null;$('resultBox').hidden=true;
-  const result=await message(s.id,'PICK',{kind:'content',method});if(result.error)throw new Error(result.error);
+  const result=await message(s.id,'PICK',{kind:'content',method,exact});if(result.error)throw new Error(result.error);
   resetSelectionPreview();$('scan').disabled=true;
-  status(method==='drag'?'Giữ và kéo chuột quanh cột bài trên trang. Kiểm tra viền cam rồi bấm Dùng vùng này.':'Bấm vào nội dung trên trang; mở rộng vùng rồi bấm Dùng vùng này.');
+  status(exact?'Kéo đúng khung muốn chụp rồi bấm Dùng vùng này. Chữ lưu dạng ảnh.':method==='drag'?'Giữ và kéo chuột quanh cột bài trên trang. Kiểm tra viền cam rồi bấm Dùng vùng này.':'Bấm vào nội dung trên trang; mở rộng vùng rồi bấm Dùng vùng này.');
 }
 $('pickContent').onclick=guarded(()=>pickContent('element'));
 $('dragContent').onclick=guarded(()=>pickContent('drag'));
+$('exactContent').onclick=guarded(()=>pickContent('drag',true));
 $('refreshPreview').onclick=guarded(async()=>{const s=await requireSource();const state=await message(s.id,'STATE');await updateSelectionPreview(state.selectionRevision);});
 $('pickSidebar').onclick=guarded(async()=>{const s=await requireSource();await message(s.id,'PICK',{kind:'sidebar'});status('Chọn nhóm chứa các nút số câu trên trang.');});
 $('mode').onchange=()=>{$('sidebarBox').hidden=$('mode').value!=='questions';if(source)void refreshSelection().catch(()=>{});};
@@ -354,7 +372,7 @@ $('scan').onclick=guarded(async()=>{
   }
   const s=await requireSource();cancel=false;lock(true);$('resultBox').hidden=true;$('failureReport').hidden=true;currentResult=null;jobTab=s.id;
   try {
-    const result=await runCapture(s.id,scanOptions());showResult(result);
+    const result=selectionMode==='exact'?await captureExact(s.id):await runCapture(s.id,scanOptions());showResult(result);
     if(result.report.complete===false || cancel) {
       await requestResourceAccess(result,s.id);
       const packed=await pack(result,s.id),saved=await storeLessons([packed],packed.report.title);

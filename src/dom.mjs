@@ -109,14 +109,57 @@ export function snapshot({ selector,element=null,excludeNavigation=true,question
   // Keep a short question with its options/explanation together. Oversized blocks
   // remain splittable; making an entire long lesson unbreakable wastes pages.
   const properties = ['display','font-family','font-size','font-weight','font-style','line-height','color','background-color','text-align','text-decoration','white-space','vertical-align','border-top','border-right','border-bottom','border-left','border-radius','padding-top','padding-right','padding-bottom','padding-left','margin-top','margin-right','margin-bottom','margin-left','list-style-type','border-collapse','border-spacing','flex-direction','flex-wrap','align-items','justify-content','gap','grid-template-columns','grid-template-rows','object-fit','object-position'];
-  function clone(el, outer = false) {
+  // SVG paint is commonly supplied by classes/custom properties. Resolve it
+  // before dropping website CSS, and keep each diagram's local definitions.
+  const svgProperties = ['fill','fill-opacity','fill-rule','stroke','stroke-width','stroke-opacity','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-dasharray','stroke-dashoffset','opacity','paint-order','vector-effect','clip-rule','clip-path','mask','filter','marker-start','marker-mid','marker-end','stop-color','stop-opacity','flood-color','flood-opacity','text-anchor','dominant-baseline','alignment-baseline','letter-spacing','word-spacing','transform','transform-origin','transform-box','x','y','cx','cy','r','rx','ry','d'];
+  function clone(el, outer = false, svgContext = null) {
     if (el.nodeType === Node.TEXT_NODE) return document.createTextNode(el.textContent);
     if (!(el instanceof Element)) return null;
     if (excluded.has(el) || omitted.has(el)) return null;
     if(visibleOnly && !groups.length && !outer && !visibleBounds(el).height)return null;
-    if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|LINK|META)$/.test(el.tagName) || el.closest('[data-ali-ui]')) return null;
+    if (/^(script|style|noscript|template|link|meta)$/.test(el.localName) || el.closest('[data-ali-ui]')) return null;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+    // Screen-reader labels must not become visible after layout is normalized.
+    if (el.matches('.sr-only,.visually-hidden,.screen-reader-text,.sl-anchor-link') ||
+        (cs.position === 'absolute' && parseFloat(cs.width)<=1 && parseFloat(cs.height)<=1 &&
+         (cs.clip !== 'auto' || cs.clipPath !== 'none'))) return null;
+    if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
+      if (!svgContext) {
+        const prefix=`ali-svg-${window.__aliSvgSerial=(window.__aliSvgSerial || 0)+1}-`;
+        svgContext=new Map([el,...el.querySelectorAll('[id]')].filter(n=>n.id).map(n=>[n.id,prefix+n.id]));
+      }
+      const localUrl=value=>value.replace(/url\(\s*(["']?)(.*?)\1\s*\)/g,(match,quote,url)=>{
+        const hash=url.lastIndexOf('#'),id=hash>=0?url.slice(hash+1):'';
+        if(svgContext.has(id) && (url.startsWith('#') || url.slice(0,hash)===location.href.split('#')[0])) return `url("#${svgContext.get(id)}")`;
+        return match;
+      });
+      const result=el.cloneNode(false);
+      for(const a of [...result.attributes]) {
+        if(/^on/i.test(a.name) || ['class','style','data-ali-root'].includes(a.name)) result.removeAttribute(a.name);
+        else if(a.name==='id') result.id=svgContext.get(a.value);
+        else if(['aria-labelledby','aria-describedby'].includes(a.name)) result.setAttribute(a.name,a.value.split(/\s+/).map(id=>svgContext.get(id)||id).join(' '));
+        else if(['href','xlink:href'].includes(a.name) && a.value.startsWith('#')) {
+          if(svgContext.has(a.value.slice(1))) result.setAttribute(a.name,'#'+svgContext.get(a.value.slice(1)));
+          else warnings.push('SVG sprite cần kiểm tra trực quan.');
+        } else result.setAttribute(a.name,localUrl(a.value));
+      }
+      for(const p of [...properties,...svgProperties]) {
+        const value=cs.getPropertyValue(p);if(value) result.style.setProperty(p,localUrl(value));
+      }
+      if(el.localName==='svg') {
+        const rect=el.getBoundingClientRect();
+        if(!el.hasAttribute('viewBox') && rect.width>0 && rect.height>0) result.setAttribute('viewBox',`0 0 ${rect.width} ${rect.height}`);
+        result.style.width=`${rect.width || el.width.baseVal.value}px`;
+        result.style.maxWidth='100%';result.style.height='auto';
+      }
+      if(el.localName==='image') {
+        const href=el.getAttribute('href') || el.getAttribute('xlink:href');
+        if(href && !href.startsWith('#')) {const url=new URL(href,document.baseURI).href;result.setAttribute('href',url);result.removeAttribute('xlink:href');resources.add(url);}
+      }
+      for(const child of el.childNodes) {const c=clone(child,false,svgContext);if(c) result.append(c);}
+      return result;
+    }
     if (el.tagName === 'IFRAME') { warnings.push('Có iframe: chọn trực tiếp nội dung trong frame bằng --frame, không tự bỏ qua.'); return null; }
     if (/^(VIDEO|AUDIO)$/.test(el.tagName)) { warnings.push('Video/audio không được đưa vào PDF.'); return null; }
     if (el.tagName === 'CANVAS') {
@@ -319,8 +362,8 @@ export function matchDragRegion(rect) {
   return best;
 }
 
-export function installDragPicker({message='Kéo quanh cột nội dung cần quét',token='content'}) {
-  window.__aliPickerCancel?.();window.__aliPicked=null;window.__aliPickedMeta={mode:'drag'};
+export function installDragPicker({message='Kéo quanh cột nội dung cần quét',token='content',exact=false}) {
+  window.__aliPickerCancel?.();window.__aliPicked=null;window.__aliPickedMeta={mode:exact?'exact':'drag'};
   const create=(css)=>{const el=document.createElement('div');el.dataset.aliUi='true';el.style.cssText=css;document.body.append(el);return el;};
   const overlay=create('position:fixed;inset:0;z-index:2147483645;cursor:crosshair;touch-action:none;background:rgba(20,40,70,.025);');
   const drawn=create('position:fixed;display:none;pointer-events:none;z-index:2147483646;border:2px dashed #1c62d8;background:rgba(28,98,216,.10);');
@@ -329,6 +372,7 @@ export function installDragPicker({message='Kéo quanh cột nội dung cần qu
   const shadow=panel.attachShadow({mode:'open'});
   shadow.innerHTML='<style>:host{all:initial}.box{font:14px/1.5 Arial;color:#17304c;background:#fff;border:1px solid #c9d8eb;border-radius:12px;padding:15px;box-shadow:0 5px 30px #13284835}p{margin:8px 0;font-size:12px;color:#56708f}.actions{display:flex;flex-wrap:wrap;gap:6px}button{font:600 12px Arial;padding:9px 11px;border:1px solid #c9d8eb;border-radius:7px;background:#f3f7ff;color:#234b82;cursor:pointer}button.primary{background:#1c62d8;color:#fff;border-color:#1c62d8}button:disabled{opacity:.4;cursor:default}</style><div class="box"><strong></strong><p class="help">Giữ và kéo chuột quanh cột chữ/ảnh. Viền cam là toàn bộ khối sẽ quét, gồm phần bên dưới màn hình. Esc để hủy.</p><p class="info">Chưa kéo vùng.</p><div class="actions"></div></div>';
   shadow.querySelector('strong').textContent=message;
+  if(exact) shadow.querySelector('.help').textContent='Kéo đúng khung muốn sao chép. Chỉ chụp phần đang thấy, không cuộn. Chữ lưu dạng ảnh. Esc để hủy.';
   const info=shadow.querySelector('.info'),actions=shadow.querySelector('.actions');
   let start=null,rectangle=null,selected=null,dragging=false;
   const history=[];
@@ -341,8 +385,10 @@ export function installDragPicker({message='Kéo quanh cột nội dung cần qu
   };
   const selectionSummaryForElement=el=>({questions:new Set([...(el.innerText || '').matchAll(/Câu\s*(?:hỏi\s*)?(\d+)\s*[:.]/gi)].map(m=>m[1])).size,images:el.querySelectorAll('img').length+(el.matches('img')?1:0),navigationBlocks:navigationRoots(el).size});
   const add=(label,callback,primary=false)=>{const b=document.createElement('button');b.textContent=label;if(primary)b.className='primary';b.onclick=callback;actions.append(b);return b;};
-  add('Mở rộng ↑',()=>{if(selected?.parentElement && selected!==document.body){history.push(selected);choose(selected.parentElement);}});
-  add('Thu hẹp ↓',()=>{if(history.length)choose(history.pop());});
+  if(!exact) {
+    add('Mở rộng ↑',()=>{if(selected?.parentElement && selected!==document.body){history.push(selected);choose(selected.parentElement);}});
+    add('Thu hẹp ↓',()=>{if(history.length)choose(history.pop());});
+  }
   add('Vẽ lại',()=>{selected=null;rectangle=null;start=null;drawn.style.display=matched.style.display='none';use.disabled=true;info.textContent='Kéo lại quanh cột nội dung.';});
   const cleanup=()=>{overlay.remove();drawn.remove();matched.remove();panel.remove();document.removeEventListener('keydown',onKey,true);window.__aliPickerCancel=null;};
   window.__aliPickerCancel=()=>{cleanup();window.__aliPicked='__cancelled__';};
@@ -351,14 +397,16 @@ export function installDragPicker({message='Kéo quanh cột nội dung cần qu
     document.querySelectorAll(`[data-ali-picked-id="${token}"]`).forEach(el=>el.removeAttribute('data-ali-picked-id'));
     selected.setAttribute('data-ali-picked-id',token);
     window.__aliPicked=`[data-ali-picked-id="${token}"]`;
-    window.__aliPickedMeta={mode:'drag',drawnRect:rectangle};cleanup();
+    window.__aliPickedMeta={mode:exact?'exact':'drag',drawnRect:{...rectangle},viewport:{width:innerWidth,height:innerHeight}};
+    if(exact) window.__aliPickedMeta.scrollPositions=[...new Set([document.scrollingElement,...document.querySelectorAll('*')])].filter(el=>el && !el.closest('[data-ali-ui]') && (el===document.scrollingElement || el.scrollHeight>el.clientHeight || el.scrollWidth>el.clientWidth)).map(el=>({el,top:el.scrollTop,left:el.scrollLeft}));
+    cleanup();
   },true);use.disabled=true;
   add('Hủy chọn',()=>window.__aliPickerCancel?.());
   const onKey=event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();window.__aliPickerCancel?.();}};
   document.addEventListener('keydown',onKey,true);
   overlay.addEventListener('pointerdown',event=>{
     if(event.button!==0)return;event.preventDefault();event.stopImmediatePropagation();
-    overlay.setPointerCapture(event.pointerId);dragging=true;start={x:event.clientX,y:event.clientY};selected=null;use.disabled=true;history.length=0;matched.style.display='none';
+    overlay.setPointerCapture(event.pointerId);dragging=true;start={x:event.clientX,y:event.clientY};rectangle=null;selected=null;use.disabled=true;history.length=0;matched.style.display='none';drawn.style.display='none';
   });
   overlay.addEventListener('pointermove',event=>{
     if(!dragging)return;event.preventDefault();event.stopImmediatePropagation();
@@ -369,7 +417,8 @@ export function installDragPicker({message='Kéo quanh cột nội dung cần qu
   overlay.addEventListener('pointerup',event=>{
     if(!dragging)return;event.preventDefault();event.stopImmediatePropagation();dragging=false;
     if(rectangle?.width<20 || rectangle?.height<20 || !rectangle) {info.textContent='Kéo vùng rộng hơn 20 × 20 px.';return;}
-    try {choose(matchDragRegion(rectangle));}catch(error){info.textContent=error.message;}
+    if(exact) {selected=document.body;info.textContent=`Chụp đúng ${Math.round(rectangle.width)} × ${Math.round(rectangle.height)} px · chữ dạng ảnh`;use.disabled=false;}
+    else try {choose(matchDragRegion(rectangle));}catch(error){info.textContent=error.message;}
   });
   overlay.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();});
 }

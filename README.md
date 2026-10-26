@@ -7,7 +7,7 @@ If Ctrl+P works fine on your site, you don't need this. If you keep getting blan
 How it works:
 
 - Runs right in the Chrome tab where you're already logged in. No passwords in code, nothing uploaded anywhere, no AI rewriting stuff.
-- DOM text stays as text, so you can search and copy it. Text baked into images stays as images, I don't OCR for you.
+- In full mode, DOM text stays as text, so you can search and copy it. Text baked into images stays as images, I don't OCR for you. Exact-region mode captures only the dragged rectangle as an image.
 - Images get packed into an offline HTML file, then you print that to A4 with Chrome's normal print dialog. Turn on Background graphics and you're good.
 - If something fails, it says so in `.report.json`. Missing images show up as placeholders, I don't silently hide them.
 
@@ -17,7 +17,13 @@ Doesn't fit your site? Fork it. Everything's in `src/` and `extension/`, nothing
 
 ## Installation
 
-I only use the extension build day to day. It's already in `extension/`, currently `v2.4.0`.
+I only use the extension build day to day. It's already in `extension/`, currently `v2.5.0`.
+
+v2.5.0 adds **Copy đúng khung kéo** next to **Chọn vùng copy full**. Exact-region mode saves the visible rectangle at screenshot resolution without auto-scrolling; its text is part of the image. Keep the page position and window size unchanged after selecting the rectangle, or select again. Full mode continues to preserve searchable DOM text.
+
+For a single open page, **Lưu ảnh gốc để so sánh cạnh bản xuất** is enabled by default. Ali captures the selected column while scrolling and opens **Bản gốc** and **Bản xuất** side by side. Each column scrolls independently. Screenshots are saved in Ali's local document so comparison still works after closing the source tab or going offline. Printing/downloading HTML includes the export only. Background batch scans do not capture screenshots. Reference captures are limited to 60 frames or approximately 20 MB per lesson; the comparison view explains when references are incomplete or unavailable. Existing saved documents remain readable and need rescanning to add original screenshots.
+
+v2.4.1 preserves inline SVG colors, strokes, arrow markers and local definitions when exporting diagrams. Hidden heading links and screen-reader labels stay out of the print copy. The drag-select button is now **Chọn vùng copy full**. Reload the extension and rescan the source page to apply these fixes to previously saved content.
 
 1. Open Chrome, go to `chrome://extensions`
 2. Turn on **Developer mode**
